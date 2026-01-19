@@ -264,7 +264,204 @@ static int proc_get_hal_info(struct seq_file *m, void *v)
 * rtw_drv_proc:
 * init/deinit when register/unregister driver
 */
+static int proc_get_monitor_chan_override(struct seq_file *m, void *v)
+{
+	struct net_device *dev = m->private;
+	_adapter *padapter = (_adapter *)rtw_netdev_priv(dev);
+	struct registry_priv	*pregpriv = &padapter->registrypriv;
+
+	RTW_PRINT_SEL(m, "Usage: echo \"<chan> <bw>\" > monitor_chan_override\n");
+	RTW_PRINT_SEL(m, "chan:	16~253, freq=channel*5+5000\n");
+	RTW_PRINT_SEL(m, "bw:	10/20/40/80, MHz. Not determing the bandwidth, but should be the same as 'iw'\n");
+	RTW_PRINT_SEL(m, "\n");
+	RTW_PRINT_SEL(m, "e.g. \n");
+	RTW_PRINT_SEL(m, "\t - echo \"201 10\" > monitor_chan_override\n");
+	RTW_PRINT_SEL(m, "\t - echo \"16 20\" > monitor_chan_override\n");
+	RTW_PRINT_SEL(m, "\t - echo \"51 40\" > monitor_chan_override\n");
+
+	return 0;
+}
+
+static ssize_t proc_set_monitor_chan_override(struct file *file, const char __user *buffer, size_t count, loff_t *pos, void *data)
+{
+	struct net_device *dev = data;
+	_adapter *padapter = (_adapter *)rtw_netdev_priv(dev);
+	char tmp[32];
+	u32 chan = 149;
+	u32 bw = 20, bw_cmd = 0;
+	u32 offset = 0;
+	enum band_type band;
+
+	if (!padapter)
+		return -EFAULT;
+
+	if (count < 2) {
+		RTW_INFO("monitor_chan_override Argument error. \n");
+		return -EFAULT;
+	}
+
+	if (count > sizeof(tmp)) {
+		rtw_warn_on(1);
+		return -EFAULT;
+	}
+
+	if (buffer && !copy_from_user(tmp, buffer, count)) {
+		int num = sscanf(tmp, "%u %u", &chan, &bw);
+		if (num < 1)
+			return count;
+	}
+
+	if ((bw != 10) && (bw != 20) && (bw != 40) && (bw != 80)) {
+		RTW_INFO("monitor_chan_override Bandwidth error: %u\n", bw);
+		return count;
+	}
+
+	switch (bw) {
+		case 10: bw_cmd = 6; break;
+		case 20: bw_cmd = 0; break;
+		case 40: bw_cmd = 1; break;
+		case 80: bw_cmd = 2; break;
+		default: bw_cmd = 0; break;
+	}
+
+	band = (chan <= 14) ? BAND_ON_24G : BAND_ON_5G;
+
+	RTW_INFO("Write to monitor_chan_override: chan=%d, bw=%d, offset=%d\n", chan, bw, offset);
+	rtw_set_chbw_cmd(padapter, GET_PRIMARY_LINK(padapter), band, (u8)chan, bw_cmd, (u8)offset, RTW_CMDF_WAIT_ACK);
+
+	return count;
+}
+
+static int proc_get_slottime_override(struct seq_file *m, void *v)
+{
+	struct net_device *dev = m->private;
+	_adapter *padapter = (_adapter *)rtw_netdev_priv(dev);
+	struct mlme_ext_priv *pmlmeext = &padapter->mlmeextpriv;
+	struct mlme_ext_info *pmlmeinfo = &(pmlmeext->mlmext_info);
+
+	RTW_PRINT_SEL(m, "Usage: echo \"<en> <slottime>\" > slottime_override\n");
+	RTW_PRINT_SEL(m, "slottime_override:	us\n");
+	RTW_PRINT_SEL(m, "e.g. \n");
+	RTW_PRINT_SEL(m, "\techo \"1 5\" > slottime_override\n");
+	RTW_PRINT_SEL(m, "\techo \"0 <any_number>\" > slottime_override\n");
+	RTW_PRINT_SEL(m, "\n");
+	RTW_PRINT_SEL(m, "Current value: %u %u\n", pmlmeinfo->slottime_override_en, pmlmeinfo->slottime_override);
+
+	return 0;
+}
+
+static ssize_t proc_set_slottime_override(struct file *file, const char __user *buffer, size_t count, loff_t *pos, void *data)
+{
+	struct net_device *dev = data;
+	_adapter *padapter = (_adapter *)rtw_netdev_priv(dev);
+	struct mlme_ext_priv *pmlmeext = &padapter->mlmeextpriv;
+	struct mlme_ext_info *pmlmeinfo = &(pmlmeext->mlmext_info);
+	char tmp[32];
+	u32 slottime, en;
+
+	if (!padapter)
+		return -EFAULT;
+
+	if (count < 2) {
+		RTW_INFO("slottime_override Argument error. \n");
+		return -EFAULT;
+	}
+
+	if (count > sizeof(tmp)) {
+		rtw_warn_on(1);
+		return -EFAULT;
+	}
+
+	if (buffer && !copy_from_user(tmp, buffer, count)) {
+		int num = sscanf(tmp, "%u %u", &en, &slottime);
+		if (num < 1)
+			return count;
+	}
+
+	if (slottime < 0 || en < 0 || en > 1) {
+		RTW_INFO("slottime_override out of range: %u %u\n", en, slottime);
+		return count;
+	}
+
+	if (en == 0) {
+		slottime = 9;	// set a default value here
+	}
+
+	pmlmeinfo->slottime_override = slottime;
+	pmlmeinfo->slottime_override_en = en;
+
+	RTW_INFO("Write to slottime_override: %u, %u\n", en, slottime);
+
+	return count;
+}
+
+static int proc_get_sifs_override(struct seq_file *m, void *v)
+{
+	struct net_device *dev = m->private;
+	_adapter *padapter = (_adapter *)rtw_netdev_priv(dev);
+	struct mlme_ext_priv *pmlmeext = &padapter->mlmeextpriv;
+	struct mlme_ext_info *pmlmeinfo = &(pmlmeext->mlmext_info);
+
+	RTW_PRINT_SEL(m, "Usage: echo \"<en> <sifs>\" > sifs_override\n");
+	RTW_PRINT_SEL(m, "sifs_override:	us\n");
+	RTW_PRINT_SEL(m, "e.g. \n");
+	RTW_PRINT_SEL(m, "\techo \"1 16\" > sifs_override\n");
+	RTW_PRINT_SEL(m, "\techo \"0 <any_number>\" > sifs_override\n");
+	RTW_PRINT_SEL(m, "\n");
+	RTW_PRINT_SEL(m, "Current value: %u %u\n", pmlmeinfo->sifs_override_en, pmlmeinfo->sifs_override);
+
+	return 0;
+}
+
+static ssize_t proc_set_sifs_override(struct file *file, const char __user *buffer, size_t count, loff_t *pos, void *data)
+{
+	struct net_device *dev = data;
+	_adapter *padapter = (_adapter *)rtw_netdev_priv(dev);
+	struct mlme_ext_priv *pmlmeext = &padapter->mlmeextpriv;
+	struct mlme_ext_info *pmlmeinfo = &(pmlmeext->mlmext_info);
+	char tmp[32];
+	u32 sifs_override, sifs_override_en;
+
+	if (!padapter)
+		return -EFAULT;
+
+	if (count < 2) {
+		RTW_INFO("sifs_override Argument error. \n");
+		return -EFAULT;
+	}
+
+	if (count > sizeof(tmp)) {
+		rtw_warn_on(1);
+		return -EFAULT;
+	}
+
+	if (buffer && !copy_from_user(tmp, buffer, count)) {
+		int num = sscanf(tmp, "%u %u", &sifs_override_en, &sifs_override);
+		if (num < 1)
+			return count;
+	}
+
+	if (sifs_override < 0 || sifs_override_en < 0 || sifs_override_en > 1) {
+		RTW_INFO("out of range: %u %u\n", sifs_override_en, sifs_override);
+		return count;
+	}
+
+	if (sifs_override_en == 0) {
+		sifs_override = 16;	// set a default value here
+	}
+
+	pmlmeinfo->sifs_override = sifs_override;
+	pmlmeinfo->sifs_override_en = sifs_override_en;
+
+	RTW_INFO("Write to sifs_override: %u, %u\n", sifs_override_en, sifs_override);
+
+	return count;
+}
+
 const struct rtw_proc_hdl drv_proc_hdls[] = {
+	RTW_PROC_HDL_SSEQ("monitor_chan_override", proc_get_monitor_chan_override, proc_set_monitor_chan_override),
+	RTW_PROC_HDL_SSEQ("slottime_override", proc_get_slottime_override, proc_set_slottime_override),
+	RTW_PROC_HDL_SSEQ("sifs_override", proc_get_sifs_override, proc_set_sifs_override),
 	RTW_PROC_HDL_SSEQ("ver_info", proc_get_drv_version, NULL),
 	RTW_PROC_HDL_SSEQ("log_level", proc_get_log_level, proc_set_log_level),
 	RTW_PROC_HDL_SSEQ("drv_cfg", proc_get_drv_cfg, NULL),

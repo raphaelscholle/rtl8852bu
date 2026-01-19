@@ -668,7 +668,10 @@ void WMMOnAssocRsp(_adapter *padapter, struct _ADAPTER_LINK *padapter_link)
 	struct registry_priv	*pregpriv = &padapter->registrypriv;
 
 	acm_mask = 0;
-	if (WIFI_ROLE_LINK_IS_ON_5G(padapter_link) ||
+	if (pmlmeinfo->sifs_override_en == 1) {
+		aSifsTime = pmlmeinfo->sifs_override;
+		RTW_INFO("WMMOnAssocRsp: sifs_override enabled, %d\n", aSifsTime);
+	} else if (WIFI_ROLE_LINK_IS_ON_5G(padapter_link) ||
 		(pmlmeext->cur_wireless_mode & WLAN_MD_11N))
 		aSifsTime = 16;
 	else
@@ -2756,6 +2759,11 @@ void update_capinfo(_adapter *adapter, struct _ADAPTER_LINK *adapter_link, u16 u
 			/* B Mode */
 			pmlmeinfo->slotTime = NON_SHORT_SLOT_TIME;
 		}
+	}
+
+	if (pmlmeinfo->slottime_override_en == 1) {
+		pmlmeinfo->slotTime = pmlmeinfo->slottime_override;
+		RTW_INFO("update_capinfo: slottime_override enabled, %d\n", pmlmeinfo->slotTime);
 	}
 
 	rtw_hal_set_hwreg(adapter, HW_VAR_SLOT_TIME, &pmlmeinfo->slotTime);
