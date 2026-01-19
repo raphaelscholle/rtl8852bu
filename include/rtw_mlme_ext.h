@@ -307,6 +307,11 @@ struct mlme_ext_info {
 	u32 illegal_beacon_code;
 	u32 wifi_reason_code;
 	u32 disconnect_occurred_time;
+
+	u8	slottime_override_en;
+	u8	slottime_override;
+	u8	sifs_override_en;
+	u8	sifs_override;
 };
 
 void init_channel_list(_adapter *padapter);
